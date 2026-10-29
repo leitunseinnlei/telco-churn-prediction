@@ -1,0 +1,13 @@
+# Virtual environment (rebuilt with: pip install -r requirements.txt)
+.venv/
+
+# Python cache files
+__pycache__/
+
+# Files created by the pipeline (rebuilt with: python src/main.py)
+data/processed/*
+!data/processed/.gitkeep
+models/
+
+# Mac system files
+.DS_Store
