@@ -64,7 +64,8 @@ def clean_data(df):
 def encode_features(df):
     """Turn text columns into number columns (one-hot encoding)."""
     # Find all columns that still contain text.
-    text_columns = df.select_dtypes(include="str").columns.tolist()
+    # "object" = text in pandas 2, "string" = text in pandas 3. Listing both works everywhere.
+    text_columns = df.select_dtypes(include=["object", "string"]).columns.tolist()
     print(f"Text columns to encode: {len(text_columns)}")
 
     # get_dummies creates one new 0/1 column per category.
