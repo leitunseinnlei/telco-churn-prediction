@@ -28,7 +28,7 @@ Losing customers is expensive. If a company can spot customers who are likely to
 3. **Training** (`src/train_models.py`): trained logistic regression and a random forest (300 trees, `min_samples_leaf=10`).
 4. **Evaluation** (`src/evaluate.py`): compared both models with a lazy baseline on 1,409 unseen test customers.
 
-The math behind both models is explained in [`docs/math_background.md`](docs/math_background.md).
+The math behind both models is explained in [`docs/math_background.md`](docs/math_background.md). A beginner-friendly study guide, with step-by-step worked examples from this project's data and the training algorithms, is in [`docs/math_study_guide.md`](docs/math_study_guide.md).
 
 ## Results
 
@@ -61,7 +61,8 @@ ml-learning-project/
 │   ├── raw/                 # original dataset (downloaded, not changed)
 │   └── processed/           # cleaned train/test files (created by the pipeline)
 ├── docs/
-│   └── math_background.md   # how both models work, with formulas
+│   ├── math_background.md   # how both models work, with formulas
+│   └── math_study_guide.md  # beginner study guide with worked examples
 ├── models/                  # saved trained models (created by the pipeline)
 ├── results/                 # charts and comparison table
 ├── src/
