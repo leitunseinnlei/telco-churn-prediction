@@ -21,7 +21,7 @@ For the more formal version, see [`math_background.md`](math_background.md).
 
 **Part B: Logistic regression**
 
-3. [The big idea: a points game](#3-the-big-idea-a-points-game)
+3. [Logistic regression in 9 steps (start here)](#3-logistic-regression-in-9-steps-start-here)
 4. [Step 1: Adding up the points](#4-step-1-adding-up-the-points)
 5. [Step 2: Turning points into a chance (the sigmoid)](#5-step-2-turning-points-into-a-chance-the-sigmoid)
 6. [Step 3: Deciding yes or no (the threshold)](#6-step-3-deciding-yes-or-no-the-threshold)
@@ -179,12 +179,475 @@ The data is **past** data. The company already recorded who left. The model need
 
 # Part B: Logistic regression
 
-## 3. The big idea: a points game
+## 3. Logistic regression in 9 steps (start here)
 
 > Give each customer **points** for each clue, turn the points into a **chance** of leaving, and **learn** the best points from past customers.
 
+This section tells the whole story in 9 short steps, using this project's real data. It is written so it can be presented directly: each step has the calculation, shown in full, and a **Say** line you can use when presenting. Sections 4 to 13 explain each idea in more detail.
+
+All calculations can be followed with a calculator (see section 1.5). Small differences in the last decimal place come from rounding.
+
+### Before you start: five small calculation rules
+
+**Rule 1: Plus and minus when multiplying**
+
 ```
-1. Add up points  →  2. Turn into a chance  →  3. Decide yes/no  →  4. Learn better points
+plus  × plus  = plus        2 × 3   = 6
+minus × minus = plus       (−2) × (−3) = 6
+plus  × minus = minus       2 × (−3) = −6
+minus × plus  = minus      (−2) × 3   = −6
+```
+
+**Rule 2: Subtracting a minus number is the same as adding**
+
+```
+5 − (−2) = 5 + 2 = 7
+−0.0402 − (−0.0136) = −0.0402 + 0.0136 = −0.0266
+```
+
+**Rule 3: Any number multiplied by 0 is 0, and by 1 stays the same**
+
+```
+1.473 × 0 = 0        1.473 × 1 = 1.473
+```
+
+**Rule 4: Turning points (z) into a chance (p): four calculator steps**
+
+```
+1. Type z and press +/−          (this gives −z)
+2. Press eˣ                      (this gives e^(−z))
+3. Press + 1 =                   (this gives 1 + e^(−z))
+4. Press 1/x                     (this gives p)
+```
+
+Example with z = −0.319: type `0.319` (because −z = +0.319) → `eˣ` → shows 1.376 → `+ 1 =` → shows 2.376 → `1/x` → shows **0.421**.
+
+**Rule 5: Working out a penalty: three calculator steps**
+
+```
+1. Type the chance given to what really happened
+2. Press ln                       (gives a minus number)
+3. Press +/−                      (makes it positive)
+```
+
+Example: chance 0.5 → `ln` → shows −0.6931 → `+/−` → shows **0.6931**.
+
+| Step | What happens                              | Detail in section |
+|------|-------------------------------------------|-------------------|
+| 1    | Ask the question                          | 2                 |
+| 2    | Turn the customers into numbers           | 2                 |
+| 3    | Write the model's recipe                  | 4, 5, 6           |
+| 4    | Start knowing nothing                     | 9                 |
+| 5    | Measure how wrong the guesses are         | 8                 |
+| 6    | Decide which way to adjust, and adjust    | 9, 10             |
+| 7    | Repeat until the guesses are right        | 9, 11             |
+| 8    | Use the trained model                     | 5, 6              |
+| 9    | From 1 clue to all 30 clues               | 7, 13             |
+
+To keep steps 1 to 8 easy, the model uses **only one clue**: fibre internet. Step 9 shows the real model with all 30 clues.
+
+### Step 1: Ask the question
+
+> **Will this customer leave? Yes or no.**
+
+The model learns from 5,634 past customers whose answers are already known.
+
+**Say:** *"Logistic regression answers a yes/no question: will this customer leave? It learns from 5,634 past customers whose answers we already know."*
+
+### Step 2: Turn the customers into numbers
+
+Each customer gets two numbers:
+
+| customerID | InternetService | Churn | Fibre? (x) | Left? (y) |
+|------------|-----------------|-------|------------|-----------|
+| 7590-VHVEG | DSL             | No    | 0          | 0         |
+| 3668-QPYBK | DSL             | Yes   | 0          | 1         |
+| 9237-HQITU | Fiber optic     | Yes   | 1          | 1         |
+| 1452-KIOVK | Fiber optic     | No    | 1          | 0         |
+
+Counting all training customers:
+
+| Group             | Customers | Left  | Stayed | Churn rate |
+|-------------------|-----------|-------|--------|------------|
+| Fibre (x = 1)     | 2,483     | 1,045 | 1,438  | **42.1%**  |
+| No fibre (x = 0)  | 3,151     | 450   | 2,701  | **14.3%**  |
+
+**How these numbers are calculated:**
+
+```
+Fibre:     stayed      = 2,483 − 1,045 = 1,438
+           churn rate  = left ÷ customers = 1,045 ÷ 2,483 = 0.421  →  42.1%
+
+No fibre:  stayed      = 3,151 − 450 = 2,701
+           churn rate  = 450 ÷ 3,151 = 0.143  →  14.3%
+
+All:       customers   = 2,483 + 3,151 = 5,634
+           left        = 1,045 + 450   = 1,495
+           churn rate  = 1,495 ÷ 5,634 = 0.265  →  26.5%
+```
+
+The model does **not** see this summary table. It only sees each customer's x and y. Its job is to discover these churn rates by itself.
+
+**Say:** *"Each customer becomes two numbers: fibre or not, and left or not. Fibre customers really left 42.1% of the time, and the others 14.3%. The model has to discover this on its own."*
+
+### Step 3: Write the model's recipe
+
+The recipe has two parts:
+
+```
+Part A. Points:   z = b₀ + b₁ × x
+Part B. Chance:   p = 1 / (1 + e^(−z))
+```
+
+| Symbol | Meaning                                          |
+|--------|--------------------------------------------------|
+| `x`    | The customer's clue: 1 = fibre, 0 = no fibre     |
+| `b₀`   | Starting points, which everyone gets             |
+| `b₁`   | Fibre points, which only fibre customers get     |
+| `z`    | The customer's total points                      |
+| `p`    | The chance of leaving, between 0 and 1           |
+
+The model only has to learn **two numbers**: b₀ and b₁.
+
+**How the recipe treats the two groups** (rule 3):
+
+```
+Fibre customer (x = 1):     z = b₀ + b₁ × 1 = b₀ + b₁     ← gets both numbers
+No-fibre customer (x = 0):  z = b₀ + b₁ × 0 = b₀          ← gets only the starting points
+```
+
+So the fibre points b₁ are the **extra** points a fibre customer gets.
+
+**Say:** *"The recipe is simple: add up the points, then turn the points into a chance. The model only needs to learn two numbers: the starting points and the fibre points."*
+
+### Step 4: Start knowing nothing
+
+At the start, both numbers are **0**. So every customer gets the same points and the same chance:
+
+```
+Points:   z = b₀ + b₁ × x = 0 + 0 × x = 0
+
+Chance:   1.  −z = 0
+          2.  e^0 = 1
+          3.  1 + 1 = 2
+          4.  p = 1 ÷ 2 = 0.5   →  50%
+```
+
+Every customer gets a **50%** chance. The model can't tell anyone apart yet.
+
+**Say:** *"At the start, the model knows nothing. Both numbers are zero, so it guesses 50% for every customer."*
+
+### Step 5: Measure how wrong the guesses are (round 1)
+
+**5a. Compare the guesses with reality.**
+
+| Group     | Guess | Reality | The guess is…       |
+|-----------|-------|---------|---------------------|
+| Fibre     | 50%   | 42.1%   | too high            |
+| No fibre  | 50%   | 14.3%   | **much** too high   |
+
+**5b. Give each customer a penalty.** The rule (section 8): take the chance the model gave to **what really happened**, then calculate −ln of it.
+
+```
+If the customer LEFT:     penalty = −ln(p)
+If the customer STAYED:   penalty = −ln(1 − p)
+```
+
+There are only four types of customers, so we calculate one penalty per type, then multiply by how many customers there are:
+
+| Type              | Customers | Chance given to the real outcome | Penalty each      | Total            |
+|-------------------|-----------|----------------------------------|-------------------|------------------|
+| Fibre, left       | 1,045     | p = 0.5                          | −ln(0.5) = 0.6931 | 1,045 × 0.6931 = 724.3  |
+| Fibre, stayed     | 1,438     | 1 − p = 0.5                      | −ln(0.5) = 0.6931 | 1,438 × 0.6931 = 996.7  |
+| No fibre, left    | 450       | p = 0.5                          | −ln(0.5) = 0.6931 | 450 × 0.6931 = 311.9    |
+| No fibre, stayed  | 2,701     | 1 − p = 0.5                      | −ln(0.5) = 0.6931 | 2,701 × 0.6931 = 1,872.2 |
+| **All**           | **5,634** |                                  |                   | **3,905.2**      |
+
+**5c. Take the average.**
+
+```
+Average penalty = 3,905.2 ÷ 5,634 = 0.693
+```
+
+**Say:** *"Then it checks its guesses against the real answers. Both groups were guessed too high, especially the no-fibre group. The model measures this with a penalty: 0.693 for every customer, so the average penalty starts at 0.693. Training will try to make this number smaller."*
+
+### Step 6: Decide which way to adjust, and adjust (round 1)
+
+The penalty says **how wrong** the model is. Now the model needs to know **which way** to change each number. For that, it uses each customer's **error**, then a **slope** for each number.
+
+**6a. Calculate each customer's error.**
+
+```
+error = guess − real answer        (real answer: 1 = left, 0 = stayed)
+```
+
+| Type              | Customers | Guess | Real | Error each        | Customers × error         |
+|-------------------|-----------|-------|------|-------------------|---------------------------|
+| Fibre, left       | 1,045     | 0.5   | 1    | 0.5 − 1 = −0.5    | 1,045 × (−0.5) = −522.5   |
+| Fibre, stayed     | 1,438     | 0.5   | 0    | 0.5 − 0 = +0.5    | 1,438 × (+0.5) = +719.0   |
+| No fibre, left    | 450       | 0.5   | 1    | −0.5              | 450 × (−0.5) = −225.0     |
+| No fibre, stayed  | 2,701     | 0.5   | 0    | +0.5              | 2,701 × (+0.5) = +1,350.5 |
+
+A negative error means "guessed too low"; a positive error means "guessed too high".
+
+**6b. The slope for the starting points (b₀): use ALL customers.** Everyone gets the starting points, so everyone's error counts.
+
+```
+Sum of errors = −522.5 + 719.0 − 225.0 + 1,350.5 = 1,322.0
+Slope for b₀  = 1,322.0 ÷ 5,634 = +0.2346
+```
+
+**6c. The slope for the fibre points (b₁): use only FIBRE customers.** Only fibre customers get the fibre points. For everyone else x = 0, and error × 0 = 0.
+
+```
+Sum of fibre errors = −522.5 + 719.0 = 196.5
+Slope for b₁        = 196.5 ÷ 5,634 = +0.0349
+```
+
+**6d. Read the slopes.**
+
+| Number | Slope    | Meaning                                         | So it goes… |
+|--------|----------|-------------------------------------------------|-------------|
+| b₀     | +0.2346  | guesses too high overall (50% vs real 26.5%)    | **down**    |
+| b₁     | +0.0349  | fibre guesses too high too (50% vs real 42.1%)  | **down**    |
+
+**6e. Adjust.** The rule is: new number = old number − slope.
+
+```
+b₀ = 0 − 0.2346 = −0.2346
+b₁ = 0 − 0.0349 = −0.0349
+```
+
+Like a shower that is too hot: you turn it down a little. A big slope means a big turn; a small slope means a small turn.
+
+**How the penalty and the slope fit together:** the penalty is how high up a hill you are; the slope tells you which way is downhill. The error formula above is exactly the slope of the penalty, so every adjustment makes the penalty a little smaller.
+
+**Say:** *"For each number, the model adds up the errors to work out whether it should go up or down. This is the slope. The starting points use every customer's error; the fibre points only use the fibre customers' errors. Both slopes are positive, meaning 'too high', so both numbers go down a little. That's one round of training."*
+
+### Step 7: Repeat until the guesses are right
+
+The model repeats steps 5 and 6 with the new numbers, round after round.
+
+**Round 2, with every calculation**
+
+*Guess (b₀ = −0.2346, b₁ = −0.0349):*
+
+```
+Fibre (x = 1):     z = −0.2346 + (−0.0349) × 1 = −0.2695
+                   −z = 0.2695  →  e^0.2695 = 1.3093  →  1 + 1.3093 = 2.3093  →  p = 1 ÷ 2.3093 = 0.4330
+
+No fibre (x = 0):  z = −0.2346 + (−0.0349) × 0 = −0.2346
+                   −z = 0.2346  →  e^0.2346 = 1.2645  →  1 + 1.2645 = 2.2645  →  p = 1 ÷ 2.2645 = 0.4416
+```
+
+*Penalty:*
+
+| Type              | Customers | Chance given to real outcome | Penalty each           | Total    |
+|-------------------|-----------|------------------------------|------------------------|----------|
+| Fibre, left       | 1,045     | 0.4330                       | −ln(0.4330) = 0.8370   | 874.6    |
+| Fibre, stayed     | 1,438     | 1 − 0.4330 = 0.5670          | −ln(0.5670) = 0.5674   | 816.0    |
+| No fibre, left    | 450       | 0.4416                       | −ln(0.4416) = 0.8173   | 367.8    |
+| No fibre, stayed  | 2,701     | 1 − 0.4416 = 0.5584          | −ln(0.5584) = 0.5827   | 1,573.8  |
+| **All**           | **5,634** |                              |                        | **3,632.3** |
+
+```
+Average penalty = 3,632.3 ÷ 5,634 = 0.645      ← down from 0.693 ✓
+```
+
+*Errors and slopes:*
+
+| Type              | Customers | Error each               | Customers × error |
+|-------------------|-----------|--------------------------|-------------------|
+| Fibre, left       | 1,045     | 0.4330 − 1 = −0.5670     | −592.5            |
+| Fibre, stayed     | 1,438     | 0.4330 − 0 = +0.4330     | +622.7            |
+| No fibre, left    | 450       | 0.4416 − 1 = −0.5584     | −251.3            |
+| No fibre, stayed  | 2,701     | 0.4416 − 0 = +0.4416     | +1,192.8          |
+
+```
+Slope for b₀ = (−592.5 + 622.7 − 251.3 + 1,192.8) ÷ 5,634 = 971.7 ÷ 5,634 = +0.1725   → still too high
+Slope for b₁ = (−592.5 + 622.7) ÷ 5,634              = 30.2 ÷ 5,634  = +0.0054   → a little too high
+```
+
+*Adjust:*
+
+```
+b₀ = −0.2346 − 0.1725 = −0.4071
+b₁ = −0.0349 − 0.0054 = −0.0402
+```
+
+**Round 3: the fibre slope turns around**
+
+With b₀ = −0.4071 and b₁ = −0.0402, the fibre guess becomes **39.0%**, now **below** the real 42.1%:
+
+```
+Fibre errors:  1,045 × (0.3900 − 1) = −637.5
+               1,438 × (0.3900 − 0) = +560.8
+Slope for b₁ = (−637.5 + 560.8) ÷ 5,634 = −76.7 ÷ 5,634 = −0.0136   → NEGATIVE → too low → go UP
+
+b₁ = −0.0402 − (−0.0136) = −0.0266      ← the fibre points start rising
+```
+
+**All the rounds**
+
+| After round | b₀       | b₁         | Fibre guess | No-fibre guess | Penalty   |
+|-------------|----------|------------|-------------|----------------|-----------|
+| 0 (start)   | 0        | 0          | 50%         | 50%            | 0.693     |
+| 1           | −0.235   | −0.035     | 43.3%       | 44.2%          | 0.645     |
+| 2           | −0.407   | −0.040     | 39.0%       | 40.0%          | 0.619     |
+| 3           | −0.537   | −0.027     | 36.3%       | 36.9%          | 0.603     |
+| 10          | −0.963   | +0.237     | 32.6%       | 27.6%          | 0.566     |
+| 50          | −1.565   | +1.152     | 39.8%       | 17.3%          | 0.532     |
+| End         | **−1.792** | **+1.473** | **42.1%** | **14.3%**      | **0.529** |
+
+- Both guesses first fall, because both were too high.
+- From round 3, the fibre guess is **below** 42.1%, so the fibre slope is negative and the fibre points go **up**.
+- The penalty goes down every round.
+
+**When training stops: the errors cancel out.** At the end, the guesses are 42.1% (fibre) and 14.3% (no fibre):
+
+```
+Fibre:     1,045 × (0.421 − 1) = −605.2
+           1,438 × (0.421 − 0) = +605.2      →  sum = 0  →  slope for b₁ = 0
+
+No fibre:    450 × (0.143 − 1) = −385.7
+           2,701 × (0.143 − 0) = +385.7      →  sum = 0
+
+All:       −605.2 + 605.2 − 385.7 + 385.7 = 0  →  slope for b₀ = 0
+```
+
+Both slopes are 0, so "new number = old number − 0" leaves the numbers unchanged. **Training is finished.**
+
+**The final penalty** (same method as step 5):
+
+| Type              | Customers | Chance given to real outcome | Penalty each           | Total    |
+|-------------------|-----------|------------------------------|------------------------|----------|
+| Fibre, left       | 1,045     | 0.421                        | −ln(0.421) = 0.865     | 904.3    |
+| Fibre, stayed     | 1,438     | 0.579                        | −ln(0.579) = 0.546     | 785.6    |
+| No fibre, left    | 450       | 0.143                        | −ln(0.143) = 1.946     | 875.8    |
+| No fibre, stayed  | 2,701     | 0.857                        | −ln(0.857) = 0.154     | 416.2    |
+| **All**           | **5,634** |                              |                        | **2,981.9** |
+
+```
+Average penalty = 2,981.9 ÷ 5,634 = 0.529      ← the smallest it can be
+```
+
+**Say:** *"The model repeats this again and again. In round 2, the penalty drops from 0.693 to 0.645. In round 3, the fibre guess falls below the real rate, so the fibre slope turns negative and the fibre points start going up. At the end, the model guesses 42.1% for fibre customers and 14.3% for the others, exactly the real rates. Then the errors cancel out, both slopes are zero, and training stops. The final numbers are −1.792 and +1.473: having fibre makes leaving more likely."*
+
+### Step 8: Use the trained model
+
+The trained numbers are b₀ = −1.792 and b₁ = +1.473.
+
+**A new customer with fibre (x = 1):**
+
+```
+Points:   z = −1.792 + 1.473 × 1 = −0.319
+
+Chance:   1.  −z = 0.319
+          2.  e^0.319 = 1.376
+          3.  1 + 1.376 = 2.376
+          4.  p = 1 ÷ 2.376 = 0.421   →  42.1%
+
+Decide:   42.1% < 50%   →  "will stay"
+```
+
+**A new customer without fibre (x = 0):**
+
+```
+Points:   z = −1.792 + 1.473 × 0 = −1.792
+
+Chance:   1.  −z = 1.792
+          2.  e^1.792 = 6.001
+          3.  1 + 6.001 = 7.001
+          4.  p = 1 ÷ 7.001 = 0.143   →  14.3%
+
+Decide:   14.3% < 50%   →  "will stay"
+```
+
+A model with only one clue can only ever say 42.1% or 14.3%. That is not enough to tell customers apart, which is why the real model uses all 30 clues.
+
+**Say:** *"Now we can use it. A new fibre customer gets 42.1%, so the model says 'will stay'. But with only one clue, every fibre customer gets the same answer. That's why the real model uses all 30 clues."*
+
+### Step 9: From 1 clue to all 30 clues
+
+The real model uses **exactly the same recipe and the same training loop**, only with 30 clues:
+
+```
+z = b₀ + b₁x₁ + b₂x₂ + … + b₃₀x₃₀
+```
+
+It learned 31 numbers (section 7 lists them all), and needed only 40 rounds.
+
+**A real test customer: 8375-DKEBR**
+1 month as a customer, month-to-month, fibre, electronic check, 69.60 per month. **Really left.**
+
+| Clue                         | Points × customer's value | Contribution |
+|------------------------------|---------------------------|--------------|
+| *Starting points*            |                           | −1.584       |
+| tenure (1 month)             | −1.257 × (−1.282)         | **+1.611**   |
+| Fibre internet               | +1.181 × 1                | **+1.181**   |
+| Electronic check             | +0.393 × 1                | +0.393       |
+| Paperless billing            | +0.374 × 1                | +0.374       |
+| Senior citizen               | +0.148 × 1                | +0.148       |
+| MonthlyCharges (69.60)       | −0.467 × 0.155            | −0.072       |
+| TotalCharges (69.60)         | +0.528 × (−0.978)         | −0.516       |
+| Phone service                | −0.521 × 1                | −0.521       |
+| **Total points z**           |                           | **+1.014**   |
+
+The other 22 clues are 0 for this customer (for example, no two-year contract), so they add nothing.
+
+**Where the scaled numbers come from** (section 25: (value − average) ÷ spread, using the training averages):
+
+```
+tenure:          (1 − 32.49)    ÷ 24.57   = −1.282
+MonthlyCharges:  (69.60 − 64.93) ÷ 30.14  = +0.155
+TotalCharges:    (69.60 − 2,299.33) ÷ 2,279.20 = −0.978
+```
+
+**Adding up the points, one by one:**
+
+```
+Start:                    −1.584
++ tenure        +1.611  →  0.027
++ fibre         +1.181  →  1.208
++ e-check       +0.393  →  1.601
++ paperless     +0.374  →  1.975
++ senior        +0.148  →  2.123
++ monthly       −0.072  →  2.051
++ total         −0.516  →  1.535
++ phone         −0.521  →  1.014
+```
+
+**Turning the points into a chance:**
+
+```
+1.  −z = −1.014
+2.  e^(−1.014) = 0.363
+3.  1 + 0.363 = 1.363
+4.  p = 1 ÷ 1.363 = 0.734   →  73.4%
+
+Decide:  73.4% ≥ 50%   →  "will leave"   ✓ (the customer really left)
+```
+
+Why does a **short** tenure **add** points? Tenure has negative points (−1.257). After scaling, 1 month becomes −1.282 (far below average). A minus times a minus is a plus: **+1.611**. So a very new customer gets a lot of extra points toward leaving.
+
+**For comparison, test customer 4376-KFVRS:** 72 months, two-year contract, fibre. Fibre still adds +1.181, but long tenure (−2.022) and the two-year contract (−1.314) pull the total down to **z = −3.023**, so p = **4.6%** → "will stay". This customer **really stayed** ✓.
+
+**Say:** *"The real model works exactly the same way, just with 30 clues. Here's a real test customer: a brand-new, month-to-month fibre customer. The short tenure and the fibre add the most points. The total is +1.014, which becomes a 73% chance, so the model says 'will leave', and the customer really did leave. A different fibre customer with 72 months and a two-year contract only gets 4.6%. The model combines all the clues, not just one."*
+
+### The 9 steps on one page
+
+```
+1. Question:   will this customer leave?
+2. Numbers:    each customer → clue x and answer y
+3. Recipe:     points z = b₀ + b₁x   →   chance p = 1/(1+e^(−z))
+4. Start:      b₀ = b₁ = 0  →  everyone 50%
+5. Measure:    penalty = −ln(chance given to what happened); average 0.693
+6. Adjust:     error = guess − real; slope = sum of errors ÷ 5,634;
+               new number = old number − slope   (positive → down, negative → up)
+7. Repeat:     until the errors cancel out and the slopes are 0
+               (guesses 42.1% and 14.3%, penalty 0.529)
+8. Use:        new customer → points → chance → yes/no
+9. Real model: same recipe and loop, with 30 clues
 ```
 
 ---
