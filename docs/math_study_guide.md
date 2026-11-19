@@ -9,8 +9,6 @@ A beginner-friendly guide to how the two models in this project learn and make p
 
 You don't need to memorise the formulas. The goal is to understand what each one does. All numbers come from the training data (5,634 customers) and test data (1,409 customers) in this project, and were checked with Python.
 
-For the more formal version, see [`math_background.md`](math_background.md).
-
 ---
 
 ## Contents
